@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gesture Deck</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#e8edf1;--ink:#17202e;--mut:#5d6b7e;--card:#fff;--acc:#2a45ff;--ok:#12a150;--bad:#d93636;--line:#cfd8e1}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 "Space Grotesk",system-ui,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 18px}
+h1{font-size:22px;margin:0;letter-spacing:-.02em}
+.pill{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:99px;background:var(--card);border:1px solid var(--line);font-size:14px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--mut)}
+.pill.on .dot{background:var(--ok);box-shadow:0 0 0 4px #12a15022}
+.pill.lost .dot{background:#e8a200}
+main{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(300px,1fr);gap:16px;padding:0 18px 24px;max-width:1100px;margin:0 auto}
+@media(max-width:800px){main{grid-template-columns:1fr}}
+.stage{position:relative;background:#0d1420;border-radius:14px;overflow:hidden;aspect-ratio:4/3}
+.stage video,.stage canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.badge{position:absolute;left:12px;bottom:12px;background:#fff;color:var(--ink);padding:8px 14px;border-radius:10px;font-weight:700;font-size:20px}
+.empty{position:absolute;inset:0;display:grid;place-items:center;color:#9fb0c6;text-align:center;padding:24px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:14px}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+button,.btn{font:inherit;font-weight:600;border:1px solid var(--ink);background:var(--card);color:var(--ink);padding:10px 14px;border-radius:10px;cursor:pointer;min-height:44px}
+button.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+button.sel{background:var(--ink);color:#fff}
+button:focus-visible,input:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.bar{height:16px;background:#e3e9ef;border-radius:8px;overflow:hidden}
+.bar i{display:block;height:100%;width:50%;background:var(--acc);transition:width .2s}
+.big{font-size:28px;font-weight:700;letter-spacing:-.02em}
+small,.hint{color:var(--mut);font-size:14px}
+input[type=text]{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px;width:100%}
+ul{margin:0;padding-left:18px}
+.msg{min-height:22px;font-size:14px}
+.err{color:var(--bad)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Gesture Deck</h1>
+  <span class="pill" id="track"><span class="dot"></span><span id="trackTxt">Tracking off</span></span>
+</header>
+<main>
+  <section>
+    <div class="stage">
+      <video id="video" playsinline muted autoplay></video>
+      <canvas id="overlay"></canvas>
+      <div class="empty" id="empty">Press Start camera.<br>On iPhone, open this page over https.</div>
+      <div class="badge" id="badge">IDLE</div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="primary" id="camBtn">Start camera</button>
+      <button id="calBtn">Reset / calibrate</button>
+    </div>
+    <div class="msg" id="camMsg"></div>
+  </section>
+
+  <aside class="panel">
+    <div>
+      <small>Volume</small>
+      <div class="big" id="volTxt">50%</div>
+      <div class="bar"><i id="volBar"></i></div>
+    </div>
+    <div><small>Media status</small><div id="status" style="font-weight:600">Add songs or connect Spotify</div></div>
+
+    <div class="row" role="tablist">
+      <button id="tabLocal" class="sel">My files</button>
+      <button id="tabSpot">Spotify</button>
+    </div>
+
+    <div id="paneLocal">
+      <label class="btn" style="display:inline-flex;align-items:center">Choose songs
+        <input type="file" id="files" accept="audio/*" multiple hidden>
+      </label>
+    </div>
+    <div id="paneSpot" hidden>
+      <p class="hint">Needs Spotify Premium and a free app at developer.spotify.com. Add <b id="redir"></b> as a Redirect URI, then paste the Client ID.</p>
+      <input type="text" id="cid" placeholder="Spotify Client ID" autocomplete="off">
+      <div class="row" style="margin-top:8px"><button class="primary" id="spLogin">Connect Spotify</button></div>
+      <p class="hint">Start playing in the Spotify app first. Gestures then control that player.</p>
+    </div>
+
+    <div class="row">
+      <button id="prevBtn" aria-label="Previous">Prev</button>
+      <button id="playBtn">Play / pause</button>
+      <button id="nextBtn">Next</button>
+    </div>
+
+    <div>
+      <small>Gestures</small>
+      <ul>
+        <li>Point with your index finger only, then flick it up: volume up</li>
+        <li>Point, then flick it down: volume down</li>
+        <li>Open hand, swipe right: next song</li>
+        <li>Open hand, swipe left: previous song</li>
+        <li>Pinch thumb and index finger, hold, then drag left or right: rewind or fast-forward (release to jump)</li>
+<li>Closed fist, hold still for a moment: play / pause</li>
+<li>Both hands are tracked; use either one. Pause briefly between gestures</li>
+      </ul>
+    </div>
+  </aside>
+</main>
+
+<script type="module">
+import { HandLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+
+/* ================= CONFIG: tweak thresholds here ================= */
+const CONFIG = {
+  windowMs: 350,        // time window used to measure movement
+  lossGraceMs: 500,     // keep state this long when hand briefly disappears
+  volThreshold: 0.55,   // vertical travel (in hand sizes) needed for a volume flick
+  swipeThreshold: 1.3,  // horizontal travel (in hand sizes) needed for a swipe
+  dominance: 1.8,       // main axis must exceed other axis by this factor
+  volCooldownMs: 450,
+  swipeCooldownMs: 900,
+  stillMs: 250,         // hand must be still this long to re-arm
+  stillThreshold: 0.2,  // max travel (hand sizes) counted as "still"
+  holdMs: 700,          // how long the detected gesture stays on screen
+  volumeStep: 5,        // percent per volume gesture
+  maxFps: 30,
+  pinchOn: 0.35,        // thumb-index gap (in hand sizes) that counts as a pinch
+  pinchOff: 0.6,        // gap needed to release the pinch (hysteresis)
+  pinchHoldMs: 150,     // pinch must be held this long before scrubbing starts
+  seekSecondsPerFrame: 90, // moving your hand across the full screen width = this many seconds
+  seekDeadzone: 0.03,   // ignore tiny hand movement while pinching (fraction of screen width)
+  fistHoldMs: 600,      // hold a closed fist this long to play/pause
+  fistCooldownMs: 1500,
+  globalCooldownMs: 300 // stops both hands firing the same action at once
+};
+
+/* ============ GESTURE DETECTION (no media code in here) ============ */
+class GestureEngine {
+  constructor(cfg){ this.cfg=cfg; this.reset(); }
+  reset(){
+    this.hist=[]; this.armed=true; this.lastFire=-1e9; this.lastSeen=-1e9;
+    this.pose="NONE"; this.state="IDLE"; this.stateUntil=0;
+    this.pinching=false; this.pinchSince=0; this.seekActive=false; this.seekAnchor=0; this.seekDx=0;
+    this.fistSince=0; this.lastFist=-1e9;
+  }
+  static d(a,b,w,h){ return Math.hypot((a.x-b.x)*w,(a.y-b.y)*h); }
+  classify(lm,w,h){
+    const ext=(tip,pip)=>GestureEngine.d(lm[tip],lm[0],w,h)>GestureEngine.d(lm[pip],lm[0],w,h)*1.12;
+    const idx=ext(8,6), mid=ext(12,10), rng=ext(16,14), pky=ext(20,18);
+    const n=[idx,mid,rng,pky].filter(Boolean).length;
+    if(idx&&!mid&&!rng&&!pky) return "POINT";
+    if(n>=3) return "OPEN";
+    if(n===0) return "FIST";
+    return "OTHER";
+  }
+  update(lm,t,w,h){
+    const c=this.cfg; let event=null;
+    if(!lm){
+      if(t-this.lastSeen>c.lossGraceMs){ this.hist=[]; this.pose="NONE"; this.pinching=false; this.pinchSince=0; this.seekActive=false; this.fistSince=0; }
+      this._decay(t);
+      return {tracking:t-this.lastSeen<=c.lossGraceMs, pose:this.pose, state:this.state, event, seekActive:this.seekActive, seekDx:this.seekDx};
+    }
+    this.lastSeen=t;
+    const size=Math.max(GestureEngine.d(lm[0],lm[9],w,h),1);
+
+    // ---- pinch (thumb tip to index tip). Ignored in a fist: tips must be well away from the wrist ----
+    const gap=GestureEngine.d(lm[4],lm[8],w,h)/size;
+    const mid={x:(lm[4].x+lm[8].x)/2, y:(lm[4].y+lm[8].y)/2};
+    const reach=GestureEngine.d(mid,lm[0],w,h)/size;
+    const wantPinch = this.pinching ? gap<c.pinchOff : (gap<c.pinchOn && reach>1.15);
+    if(wantPinch){
+      if(!this.pinching){ this.pinching=true; this.pinchSince=t; }
+      if(!this.seekActive && t-this.pinchSince>=c.pinchHoldMs){
+        this.seekActive=true; this.seekAnchor=1-mid.x; this.seekDx=0; this.armed=false; this.hist=[];
+      }
+    } else {
+      if(this.pinching && this.seekActive){
+        event="SEEK_END"; this.state="SEEK_END"; this.stateUntil=t+c.holdMs; this.lastFire=t;
+      }
+      this.pinching=false; this.pinchSince=0; this.seekActive=false;
+    }
+    if(this.seekActive){
+      this.pose="PINCH";
+      let dx=(1-mid.x)-this.seekAnchor;                 // mirrored: moving right = forward
+      this.seekDx = Math.abs(dx)<c.seekDeadzone ? 0 : dx-Math.sign(dx)*c.seekDeadzone;
+      this.state="SEEKING"; this.stateUntil=t+c.holdMs;
+      return {tracking:true, pose:"PINCH", state:"SEEKING", event:null, seekActive:true, seekDx:this.seekDx};
+    }
+    if(event) { this.pose="OTHER"; this.hist=[]; this._decay(t);
+      return {tracking:true, pose:this.pose, state:this.state, event, seekActive:false, seekDx:this.seekDx}; }
+    if(this.pinching){ return {tracking:true, pose:"PINCH", state:this.state, event:null, seekActive:false, seekDx:0}; }
+
+    const pose=this.classify(lm,w,h);
+    if(pose!==this.pose){ this.hist=[]; this.pose=pose; }
+
+    // ---- closed fist held still = play/pause ----
+    if(pose==="FIST"){
+      if(!this.fistSince) this.fistSince=t;
+      if(t-this.fistSince>=c.fistHoldMs && t-this.lastFist>c.fistCooldownMs){
+        this.lastFist=t; this.fistSince=0; this.armed=false; this.hist=[];
+        this.state="TOGGLE"; this.stateUntil=t+c.holdMs; event="TOGGLE";
+        return {tracking:true, pose, state:this.state, event, seekActive:false, seekDx:0};
+      }
+    } else this.fistSince=0;
+
+    const p = pose==="POINT" ? lm[8] : lm[9];           // fingertip or palm
+    // x is mirrored so "right" matches what the user sees on screen
+    this.hist.push({t, x:(1-p.x)*w, y:p.y*h});
+    while(this.hist.length&&t-this.hist[0].t>c.windowMs) this.hist.shift();
+
+    if(this.hist.length>=3){
+      const a=this.hist[0], b=this.hist[this.hist.length-1];
+      const dx=(b.x-a.x)/size, dy=(b.y-a.y)/size;
+
+      if(!this.armed){
+        // re-arm only after the hand has been still for stillMs
+        const recent=this.hist.filter(s=>t-s.t<=c.stillMs);
+        if(recent.length>=3 && t-recent[0].t>=c.stillMs*0.8){
+          const r0=recent[0], r1=recent[recent.length-1];
+          if(Math.hypot(r1.x-r0.x,r1.y-r0.y)/size<c.stillThreshold) this.armed=true;
+        }
+      } else if(pose==="POINT" && t-this.lastFire>c.volCooldownMs
+                && Math.abs(dy)>c.volThreshold && Math.abs(dy)>Math.abs(dx)*c.dominance){
+        event = dy<0 ? "VOLUME_UP" : "VOLUME_DOWN";
+      } else if(pose==="OPEN" && t-this.lastFire>c.swipeCooldownMs
+                && Math.abs(dx)>c.swipeThreshold && Math.abs(dx)>Math.abs(dy)*c.dominance){
+        event = dx>0 ? "SWIPE_RIGHT" : "SWIPE_LEFT";
+      }
+      if(event){ this.armed=false; this.lastFire=t; this.hist=[]; this.state=event; this.stateUntil=t+c.holdMs; }
+    }
+    this._decay(t);
+    return {tracking:true, pose:this.pose, state:this.state, event, seekActive:false, seekDx:0};
+  }
+  _decay(t){ if(this.state!=="IDLE" && t>this.stateUntil) this.state="IDLE"; }
+}
+
+/* ================= MEDIA CONTROL (no vision code in here) ================= */
+const $=id=>document.getElementById(id);
+const audio=new Audio(); audio.playsInline=true;
+let actx=null, gain=null, playlist=[], idx=0;
+
+function ensureAudio(){
+  if(!actx){
+    actx=new (window.AudioContext||window.webkitAudioContext)();
+    gain=actx.createGain();
+    actx.createMediaElementSource(audio).connect(gain).connect(actx.destination);
+  }
+  if(actx.state==="suspended") actx.resume();
+  applyLocalVolume();
+}
+// iOS ignores audio.volume, so volume is applied through a Web Audio gain node
+function applyLocalVolume(){ if(gain) gain.gain.value=media.volume/100; }
+
+const Local={
+  async play(){ if(!playlist.length) return "Choose songs first"; ensureAudio(); await audio.play(); return "Playing: "+playlist[idx].name; },
+  pause(){ audio.pause(); return "Paused"; },
+  async toggle(){ return audio.paused ? this.play() : this.pause(); },
+  async load(i){ idx=(i+playlist.length)%playlist.length; audio.src=URL.createObjectURL(playlist[idx]); return this.play(); },
+  async next(){ return playlist.length ? this.load(idx+1) : "Choose songs first"; },
+  async prev(){ return playlist.length ? this.load(idx-1) : "Choose songs first"; },
+  async setVolume(v){ applyLocalVolume(); },
+  async seekBy(sec){
+    if(!playlist.length) return "Choose songs first";
+    const dur=isFinite(audio.duration)?audio.duration:1e9;
+    audio.currentTime=Math.max(0,Math.min(dur-0.5,audio.currentTime+sec));
+    return "Jumped "+fmtSec(sec)+" ("+fmtTime(audio.currentTime)+")";
+  }
+};
+
+const Spotify={
+  token:null,
+  async call(method,path){
+    if(!this.token) return {msg:"Connect Spotify first"};
+    const r=await fetch("https://api.spotify.com/v1"+path,{method,headers:{Authorization:"Bearer "+this.token}});
+    if(r.status===401){ this.token=null; localStorage.removeItem("sp_token"); return {msg:"Spotify session expired. Connect again."}; }
+    if(r.status===404) return {msg:"No active Spotify device. Start playing in the Spotify app."};
+    if(r.status===403) return {msg:"Spotify refused this (Premium needed, or this device blocks the command)."};
+    return {ok:r.ok};
+  },
+  async msg(p,ok){ const r=await p; return r.msg||ok; },
+  next(){ return this.msg(this.call("POST","/me/player/next"),"Next track (Spotify)"); },
+  prev(){ return this.msg(this.call("POST","/me/player/previous"),"Previous track (Spotify)"); },
+  async toggle(){
+    const s=await fetch("https://api.spotify.com/v1/me/player",{headers:{Authorization:"Bearer "+this.token}}).catch(()=>null);
+    const playing = s && s.status===200 ? (await s.json()).is_playing : false;
+    return this.msg(this.call("PUT",playing?"/me/player/pause":"/me/player/play"), playing?"Paused (Spotify)":"Playing (Spotify)");
+  },
+  setVolume(v){ return this.call("PUT","/me/player/volume?volume_percent="+v); },
+  async seekBy(sec){
+    if(!this.token) return "Connect Spotify first";
+    const r=await fetch("https://api.spotify.com/v1/me/player",{headers:{Authorization:"Bearer "+this.token}}).catch(()=>null);
+    if(!r) return "Could not reach Spotify";
+    if(r.status===401){ this.token=null; localStorage.removeItem("sp_token"); return "Spotify session expired. Connect again."; }
+    if(r.status!==200) return "No active Spotify device. Start playing in the Spotify app.";
+    const st=await r.json();
+    if(!st.item) return "Nothing is playing in Spotify";
+    const pos=Math.max(0,Math.min(st.item.duration_ms-1000, st.progress_ms+sec*1000));
+    return this.msg(this.call("PUT","/me/player/seek?position_ms="+Math.round(pos)),"Jumped "+fmtSec(sec)+" ("+fmtTime(pos/1000)+")");
+  }
+};
+
+function fmtTime(s){ s=Math.max(0,Math.round(s)); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); }
+function fmtSec(s){ return (s>=0?"+":"-")+fmtTime(Math.abs(s)); }
+
+const media={
+  volume:50, mode:"local",
+  get p(){ return this.mode==="local"?Local:Spotify; },
+  async run(fn){ try{ setStatus(await fn()); }catch(e){ setStatus("Error: "+(e.message||e),true); } },
+  setVolume(v){
+    this.volume=Math.max(0,Math.min(100,v));
+    $("volTxt").textContent=this.volume+"%"; $("volBar").style.width=this.volume+"%";
+    this.run(async()=>{ await this.p.setVolume(this.volume); return "Volume "+this.volume+"%"; });
+  },
+  volumeUp(){ this.setVolume(this.volume+CONFIG.volumeStep); },
+  volumeDown(){ this.setVolume(this.volume-CONFIG.volumeStep); },
+  next(){ this.run(()=>this.p.next()); },
+  prev(){ this.run(()=>this.p.prev()); },
+  toggle(){ this.run(()=>this.p.toggle()); },
+  seekBy(sec){ this.run(()=>this.p.seekBy(sec)); }
+};
+function setStatus(t,err){ const s=$("status"); s.textContent=t; s.className=err?"err":""; }
+
+// the only link between detection and media
+const ACTIONS={
+  VOLUME_UP:()=>media.volumeUp(), VOLUME_DOWN:()=>media.volumeDown(),
+  SWIPE_RIGHT:()=>media.next(),   SWIPE_LEFT:()=>media.prev(),
+  TOGGLE:()=>media.toggle()
+};
+
+/* ================= CAMERA + TRACKING LOOP ================= */
+const video=$("video"), canvas=$("overlay"), ctx=canvas.getContext("2d");
+const engines={Left:new GestureEngine(CONFIG), Right:new GestureEngine(CONFIG)};
+let lastGlobalFire=-1e9;
+let landmarker=null, drawer=null, stream=null, running=false, lastVideoTime=-1, lastFrame=0;
+
+function setTracking(state,text){ $("track").className="pill "+state; $("trackTxt").textContent=text; }
+
+async function loadModel(){
+  if(landmarker) return;
+  const fs=await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+  const base="https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+  for(const delegate of ["GPU","CPU"]){
+    try{
+      landmarker=await HandLandmarker.createFromOptions(fs,{
+        baseOptions:{modelAssetPath:base,delegate}, runningMode:"VIDEO", numHands:2,
+        minHandDetectionConfidence:0.6, minHandPresenceConfidence:0.5, minTrackingConfidence:0.5});
+      return;
+    }catch(e){ if(delegate==="CPU") throw e; }
+  }
+}
+
+async function startCamera(){
+  $("camMsg").textContent=""; $("camMsg").className="msg";
+  if(!navigator.mediaDevices?.getUserMedia){
+    return camError("Camera needs a secure page (https). Host this file with https and open it again.");
+  }
+  $("camBtn").disabled=true; $("camBtn").textContent="Loading...";
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user",width:{ideal:640},height:{ideal:480}},audio:false});
+    video.srcObject=stream; await video.play();
+    await new Promise(r=>video.videoWidth?r():video.addEventListener("loadedmetadata",r,{once:true}));
+    canvas.width=video.videoWidth; canvas.height=video.videoHeight;
+    drawer=new DrawingUtils(ctx);
+    await loadModel();
+    $("empty").hidden=true; running=true; Object.values(engines).forEach(e=>e.reset()); lastVideoTime=-1;
+    $("camBtn").textContent="Stop camera"; $("camBtn").disabled=false;
+    setTracking("lost","No hand"); requestAnimationFrame(loop);
+  }catch(e){
+    stopCamera(true);
+    const m = e.name==="NotAllowedError" ? "Camera permission was denied. Allow camera access in browser settings, then try again."
+            : e.name==="NotFoundError" ? "No camera found on this device."
+            : "Could not start: "+(e.message||e);
+    camError(m);
+  }
+}
+function camError(m){ $("camMsg").textContent=m; $("camMsg").className="msg err"; $("camBtn").disabled=false; $("camBtn").textContent="Start camera"; }
+
+function stopCamera(keepMsg){
+  running=false;
+  stream?.getTracks().forEach(t=>t.stop()); stream=null; video.srcObject=null;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  $("empty").hidden=false; $("badge").textContent="IDLE";
+  setTracking("","Tracking off"); Object.values(engines).forEach(e=>e.reset());
+  if(!keepMsg){ $("camBtn").textContent="Start camera"; $("camBtn").disabled=false; }
+}
+
+function loop(now){
+  if(!running) return;
+  requestAnimationFrame(loop);
+  if(now-lastFrame<1000/CONFIG.maxFps) return;           // limit CPU use
+  if(video.readyState<2||video.currentTime===lastVideoTime) return;
+  lastFrame=now; lastVideoTime=video.currentTime;
+  let res; try{ res=landmarker.detectForVideo(video,now); }catch(e){ return; }
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  // assign each detected hand to a stable slot by its handedness label
+  const hands={Left:null,Right:null};
+  (res.landmarks||[]).forEach((lm,i)=>{
+    let key=res.handedness?.[i]?.[0]?.categoryName==="Left"?"Left":"Right";
+    if(hands[key]) key=key==="Left"?"Right":"Left";      // two hands got the same label: use the free slot
+    if(!hands[key]) hands[key]=lm;
+  });
+  let seeking=null, label="IDLE", nHands=0, poses=[];
+  for(const key of ["Left","Right"]){
+    const lm=hands[key], eng=engines[key];
+    if(lm){
+      nHands++;
+      const col=key==="Left"?"#ffb020":"#2a45ff";
+      drawer.drawConnectors(lm,HandLandmarker.HAND_CONNECTIONS,{color:"#ffffff",lineWidth:3});
+      drawer.drawLandmarks(lm,{color:col,fillColor:"#ffffff",lineWidth:2,radius:4});
+    }
+    const out=eng.update(lm,now,canvas.width,canvas.height);
+    if(lm) poses.push(out.pose.toLowerCase());
+    if(out.seekActive && !seeking) seeking=out;
+    if(out.state!=="IDLE" && out.state!=="SEEK_END" && label==="IDLE") label=out.state.replace("_"," ");
+    if(out.event==="SEEK_END"){
+      const sec=Math.round(out.seekDx*CONFIG.seekSecondsPerFrame);
+      if(Math.abs(sec)>=2) media.seekBy(sec); else setStatus("Seek cancelled (no movement)");
+    } else if(out.event && now-lastGlobalFire>CONFIG.globalCooldownMs){
+      lastGlobalFire=now; ACTIONS[out.event]?.();
+    }
+  }
+  if(seeking){
+    const sec=Math.round(seeking.seekDx*CONFIG.seekSecondsPerFrame);
+    label="SEEK "+fmtSec(sec);
+  }
+  if(nHands) setTracking("on", nHands===2?"Tracking 2 hands ("+poses.join(" + ")+")":"Tracking 1 hand ("+poses[0]+")");
+  else setTracking("lost", Object.values(engines).some(e=>now-e.lastSeen<=CONFIG.lossGraceMs)?"Hand lost, holding":"No hand");
+  $("badge").textContent=label;
+}
+
+/* ================= UI WIRING ================= */
+$("camBtn").addEventListener("click",()=> running ? stopCamera() : startCamera());
+$("calBtn").addEventListener("click",()=>{ Object.values(engines).forEach(e=>e.reset()); $("camMsg").className="msg"; $("camMsg").textContent="Reset. Hold your hand still for a moment, then try a gesture."; });
+$("prevBtn").addEventListener("click",()=>media.prev());
+$("nextBtn").addEventListener("click",()=>media.next());
+$("playBtn").addEventListener("click",()=>media.toggle());
+$("files").addEventListener("change",e=>{
+  playlist=[...e.target.files]; idx=0;
+  if(playlist.length){ ensureAudio(); media.run(()=>Local.load(0)); }
+});
+audio.addEventListener("ended",()=>media.next());
+
+function setMode(m){
+  media.mode=m; $("paneLocal").hidden=m!=="local"; $("paneSpot").hidden=m!=="spotify";
+  $("tabLocal").classList.toggle("sel",m==="local"); $("tabSpot").classList.toggle("sel",m==="spotify");
+  if(m==="spotify") audio.pause();
+}
+$("tabLocal").addEventListener("click",()=>setMode("local"));
+$("tabSpot").addEventListener("click",()=>setMode("spotify"));
+$("volBar").style.width="50%";
+
+/* ---------- Spotify login (PKCE, no server needed) ---------- */
+const REDIRECT=location.origin+location.pathname;
+$("redir").textContent=REDIRECT;
+$("cid").value=localStorage.getItem("sp_cid")||"";
+const b64=buf=>btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+$("spLogin").addEventListener("click",async()=>{
+  const cid=$("cid").value.trim(); if(!cid) return setStatus("Paste your Spotify Client ID first",true);
+  localStorage.setItem("sp_cid",cid);
+  const ver=b64(crypto.getRandomValues(new Uint8Array(48)));
+  localStorage.setItem("sp_ver",ver);
+  const ch=b64(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(ver)));
+  location.href="https://accounts.spotify.com/authorize?"+new URLSearchParams({
+    client_id:cid,response_type:"code",redirect_uri:REDIRECT,code_challenge_method:"S256",
+    code_challenge:ch,scope:"user-modify-playback-state user-read-playback-state"});
+});
+(async()=>{
+  const code=new URLSearchParams(location.search).get("code");
+  if(code){
+    history.replaceState({},"",REDIRECT);
+    try{
+      const r=await fetch("https://accounts.spotify.com/api/token",{method:"POST",
+        headers:{"Content-Type":"application/x-www-form-urlencoded"},
+        body:new URLSearchParams({client_id:localStorage.getItem("sp_cid"),grant_type:"authorization_code",
+          code,redirect_uri:REDIRECT,code_verifier:localStorage.getItem("sp_ver")})});
+      const j=await r.json();
+      if(j.access_token){ Spotify.token=j.access_token; localStorage.setItem("sp_token",j.access_token); }
+      else setStatus("Spotify login failed: "+(j.error_description||j.error),true);
+    }catch(e){ setStatus("Spotify login failed",true); }
+  } else Spotify.token=localStorage.getItem("sp_token");
+  if(Spotify.token){ setMode("spotify"); setStatus("Spotify connected. Start playback in the Spotify app."); }
+})();
+</script>
+</body>
+</html>
